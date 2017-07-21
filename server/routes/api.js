@@ -67,6 +67,7 @@ router.post('/send', function (req, res, next) {
   post_req.end();
 
   res.status(200);
+  res.send('OK');
 });
 
 // polls the message with messageId
