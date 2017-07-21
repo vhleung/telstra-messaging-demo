@@ -1,9 +1,45 @@
 const express = require('express');
 var request = require('request');
-
+var lib = require('telstrasmsmessagingapilib/lib');
 const https = require('https');
+
+const oAuthManager = lib.OAuthManager;
+var controller = lib.SMSController;
+
 const router = express.Router();
 
+const errorTitle = 'An error occured!';
+const _credentials = require('../api-credentials');
+
+lib.Configuration.oAuthClientId = _credentials.CLIENT_ID;
+lib.Configuration.oAuthClientSecret = _credentials.CLIENT_SECRET;
+
+lib.Configuration.oAuthTokenUpdateCallback = function (token) {
+  console.log('new token', token);
+};
+
+// called on every request except for /token. Checks that the token is still valid before continuing with the request
+router.use('/', function (req, res, next) {
+  if (oAuthManager.isTokenSet()) {
+    // token is already stored in the client
+    // make API calls as required
+    next();
+  } else {
+    const scopes = [lib.OAuthScopeEnum.SMS];
+    const promise = oAuthManager.authorize(scopes);
+    promise.then((success) => {
+      // client authorized. API calls can be made
+      next();
+  }, (exception) => {
+      // error occurred, exception will be of type lib/Exceptions/OAuthProviderException
+      lib.Configuration.oAuthToken = null;
+      return res.status(exception.errorCode).json({
+        title: `${exception.errorCode} - ${errorTitle}`,
+        message: exception.errorMessage
+      });
+    });
+  }
+});
 
 // sends the SMS object passed in the req.body
 router.post('/send', function (req, res, next) {
@@ -13,7 +49,7 @@ router.post('/send', function (req, res, next) {
       path: '/v2/messages/sms',
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer aaCH99mGv4sGozXr8PzxF63qZb8o',
+        'Authorization': 'Bearer ' + lib.Configuration.oAuthToken.accessToken,
         'Content-Type': 'application/json'
       }
     };
@@ -26,19 +62,11 @@ router.post('/send', function (req, res, next) {
     });
   });
 
-  post_data = {
-    "to": "+61411292236",
-    "body": "test from hackathon",
-    "from": "+61472880109",
-    "validity": 0,
-    "scheduleDelivery": 0,
-    "notifyURL": "string",
-    "replyRequest": true
-  };
-
   // post the data
-  post_req.write(JSON.stringify(post_data));
+  post_req.write(JSON.stringify(req.body));
   post_req.end();
+
+  res.status(200);
 });
 
 // polls the message with messageId
